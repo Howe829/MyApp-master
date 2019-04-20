@@ -7,6 +7,7 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.sqlite.SQLiteDatabase;
+import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
@@ -414,7 +415,9 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
                     .build();
             try (Response response = client.newCall(request).execute()) {
                 if (response.code() != 200){
+                    Looper.prepare();
                     Toast.makeText(LoginActivity.this,"NetWork Error,Please Check Your NetWork.",Toast.LENGTH_SHORT).show();
+                    Looper.loop();
                     return "";
                 }
                 return response.body().string();

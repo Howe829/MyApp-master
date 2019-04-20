@@ -4,6 +4,8 @@ import android.Manifest;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Outline;
+import android.graphics.Rect;
 import android.hardware.Camera;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,6 +16,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
 import android.widget.Toast;
 
@@ -21,7 +24,9 @@ import com.arcsoft.face.AgeInfo;
 import com.arcsoft.face.ErrorInfo;
 import com.arcsoft.face.Face3DAngle;
 import com.arcsoft.face.FaceEngine;
+import com.arcsoft.face.FaceFeature;
 import com.arcsoft.face.FaceInfo;
+import com.arcsoft.face.FaceSimilar;
 import com.arcsoft.face.GenderInfo;
 import com.arcsoft.face.LivenessInfo;
 import com.arcsoft.face.VersionInfo;
@@ -46,6 +51,8 @@ public class FaceActivity2 extends AppCompatActivity {
     private FaceEngine faceEngine;
     private int afCode = -1;
     private int processMask = FaceEngine.ASF_AGE | FaceEngine.ASF_FACE3DANGLE | FaceEngine.ASF_GENDER | FaceEngine.ASF_LIVENESS;
+    private int times = 0;
+    private FaceFeature[] faceFeatures = new FaceFeature[20];
     /**
      * 相机预览显示的控件，可为SurfaceView或TextureView
      */
@@ -88,7 +95,8 @@ public class FaceActivity2 extends AppCompatActivity {
 
         previewView = findViewById(R.id.texture_preview);
         faceRectView = findViewById(R.id.face_rect_view);
-
+        previewView.setOutlineProvider(new TextureVideoViewOutlineProvider(2));
+        previewView.setClipToOutline(true);
         if (!checkPermissions(NEEDED_PERMISSIONS)) {
             ActivityCompat.requestPermissions(this, NEEDED_PERMISSIONS, ACTION_REQUEST_PERMISSIONS);
         } else {
@@ -98,11 +106,30 @@ public class FaceActivity2 extends AppCompatActivity {
 
 
     }
+    public class TextureVideoViewOutlineProvider extends ViewOutlineProvider {
+        private float mRadius;
+
+        public TextureVideoViewOutlineProvider(float radius) {
+            this.mRadius = radius;
+        }
+
+        @Override
+        public void getOutline(View view, Outline outline) {
+            Rect rect = new Rect();
+            view.getGlobalVisibleRect(rect);
+            int leftMargin = 0;
+            int topMargin = 0;
+            Rect selfRect = new Rect(leftMargin, topMargin,
+                    rect.right - rect.left - leftMargin, rect.bottom - rect.top - topMargin);
+            outline.setRoundRect(selfRect, mRadius);
+        }
+
+    }
 
     private void initEngine() {
         faceEngine = new FaceEngine();
         afCode = faceEngine.init(this.getApplicationContext(), FaceEngine.ASF_DETECT_MODE_VIDEO, ConfigUtil.getFtOrient(this),
-                16, 20, FaceEngine.ASF_FACE_DETECT | FaceEngine.ASF_AGE | FaceEngine.ASF_FACE3DANGLE | FaceEngine.ASF_GENDER | FaceEngine.ASF_LIVENESS);
+                16, 1, FaceEngine.ASF_FACE_RECOGNITION | FaceEngine.ASF_FACE_DETECT | FaceEngine.ASF_AGE | FaceEngine.ASF_FACE3DANGLE | FaceEngine.ASF_GENDER | FaceEngine.ASF_LIVENESS);
         VersionInfo versionInfo = new VersionInfo();
         faceEngine.getVersion(versionInfo);
         Log.i(TAG, "initEngine:  init: " + afCode + "  version:" + versionInfo);
@@ -172,6 +199,7 @@ public class FaceActivity2 extends AppCompatActivity {
                     return;
                 }
 
+
                 List<AgeInfo> ageInfoList = new ArrayList<>();
                 List<GenderInfo> genderInfoList = new ArrayList<>();
                 List<Face3DAngle> face3DAngleList = new ArrayList<>();
@@ -180,7 +208,7 @@ public class FaceActivity2 extends AppCompatActivity {
                 int genderCode = faceEngine.getGender(genderInfoList);
                 int face3DAngleCode = faceEngine.getFace3DAngle(face3DAngleList);
                 int livenessCode = faceEngine.getLiveness(faceLivenessInfoList);
-
+                int code1 = 0;
                 //有其中一个的错误码不为0，return
                 if ((ageCode | genderCode | face3DAngleCode | livenessCode) != ErrorInfo.MOK) {
                     return;
@@ -188,10 +216,29 @@ public class FaceActivity2 extends AppCompatActivity {
                 if (faceRectView != null && drawHelper != null) {
                     List<DrawInfo> drawInfoList = new ArrayList<>();
                     for (int i = 0; i < faceInfoList.size(); i++) {
-                        drawInfoList.add(new DrawInfo(faceInfoList.get(i).getRect(), genderInfoList.get(i).getGender(), ageInfoList.get(i).getAge(), faceLivenessInfoList.get(i).getLiveness(), null));
+                        faceFeatures[times] = new FaceFeature();
+//                        drawInfoList.add(new DrawInfo(faceInfoList.get(i).getRect(), genderInfoList.get(i).getGender(), ageInfoList.get(i).getAge(), faceLivenessInfoList.get(i).getLiveness(), null));
+                        if (faceLivenessInfoList.get(i).getLiveness()==1){
+                            code1= faceEngine.extractFaceFeature(nv21,previewSize.width,previewSize.height,FaceEngine.CP_PAF_NV21, faceInfoList.get(i), faceFeatures[times]);
+                            times += 1;
+
+                        }else {
+                            Toast.makeText(FaceActivity2.this,"IT'S NOT ALIVE.",Toast.LENGTH_SHORT).show();
+                        }
                     }
+//                    Log.d("TAD", String.valueOf(faceInfoList.size()));
                     drawHelper.draw(faceRectView, drawInfoList);
                 }
+//                times += 1;
+                if (times==20){
+                    cameraHelper.stop();
+                    FaceSimilar matching = new FaceSimilar();
+                    //比对两个人脸特征获取相似度信息
+                    faceEngine.compareFaceFeature(faceFeatures[0], faceFeatures[0], matching);
+                    Toast.makeText(FaceActivity2.this,"Finishied!"+String.valueOf(matching.getScore()),Toast.LENGTH_SHORT).show();
+                }
+
+
             }
 
             @Override
